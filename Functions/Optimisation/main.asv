@@ -1,0 +1,68 @@
+function [egn_neu, kosten] = main(egn17,disturbance,step,bound)
+%% This is the main function for the VD optimisation
+% Define Variables
+    fields=RemoveHPfromOptimisation('FDS',fieldnames(egn17.HPs));
+    psi=zeros(numel(fields),3);
+    dpsi=zeros(numel(fields),3);
+    load('FSG');
+    radmax=36;
+    [Tracks,dist]=BuildTracks(BezierCurves,BezierLength,Ln,radmax);
+    s=1;
+    egn18=egn17;
+    [LatAcc]=Cornering(Tracks,dist,egn17);
+%     [AccelTime,BrakeTime]=Accel(egn17);
+    psi0=cost(LatAcc,0,0);
+%     psi0=cost(0,AccelTime,0);
+    simcounter=0;
+    kosten=psi0;
+%     Scattering(egn18);
+%% Begin Optimisation
+for t=1:20
+        for i=1:numel(fields)
+            for j = 1:3
+                egn17.HPs.(fields{i})(j)=egn17.HPs.(fields{i})(j)+disturbance;
+                egn17=MirrorHPs(egn17);
+%                 [LatAcc,LatBal]=Cornering(Tracks,dist,egn17);
+%                 [AccelTime,BrakeTime,BrakeDistance]=Accel(egn17); 
+%                 psi(i,j)=cost(LatAcc,LatBal,AccelTime,BrakeTime,BrakeDistance);
+                [LatAcc]=Cornering(Tracks,dist,egn17);
+                warning off;
+%                 [AccelTime,BrakeTime]=Accel(egn17);
+%                 psi(i,j)=cost(LatAcc,AccelTime,BrakeTime);
+                psi(i,j)=cost(LatAcc,0,0);
+                simcounter=simcounter+1;
+                disp(['Number of simulations: ',num2str(s),'.',num2str(simcounter-numel(fields)*3*(s-1))]);
+                egn17.HPs.(fields{i})(j)=egn17.HPs.(fields{i})(j)-disturbance;
+                egn17=MirrorHPs(egn17);
+            end
+        end
+        %%Create gradient
+        for i = 1:numel(fields)
+            for j = 1:3
+                dpsi(i,j)=(psi(i,j)-psi0)/step;
+            end
+        end
+        
+    %%Create new vector p
+    [step]=Armijo(egn17,Tracks,dist,psi0,dpsi,disturbance);
+    egn17.HPs=egn18.HPs;
+        for i = 1:numel(fields)
+            for j = 1:30
+                    egn17.HPs.(fields{i})(j)=egn17.HPs.(fields{i})(j)-(dpsi(i,j)*step);
+            end
+        end
+
+    [egn17,max,min]=Restrictions(egn17);
+    egn17=MirrorHPs(egn17);
+    Scattering(egn18,egn17,max,min);
+    save('Opti.mat','egn17');
+    
+    [LatAcc]=Cornering(Tracks,dist,egn17);
+%     [AccelTime,BrakeTime]=Accel(egn17);
+    psi0=cost(LatAcc,0,0);
+    kosten=[kosten psi0];
+    egn18=egn17;
+    s=s+1;
+end
+egn_neu = egn17;
+end
